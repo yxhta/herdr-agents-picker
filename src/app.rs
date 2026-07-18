@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use ratatui::text::Text;
 use ratatui::widgets::TableState;
 
 use crate::fuzzy;
@@ -20,7 +21,7 @@ pub struct App {
     /// Indices into `agents`, filter applied, best match first.
     pub filtered: Vec<usize>,
     pub table_state: TableState,
-    pub preview: String,
+    pub preview: Text<'static>,
     pub error: Option<String>,
     pub preview_error: Option<String>,
     home: Option<String>,
@@ -52,7 +53,7 @@ impl App {
             filter: String::new(),
             filtered: Vec::new(),
             table_state: TableState::default(),
-            preview: String::new(),
+            preview: Text::default(),
             error: None,
             preview_error: None,
             home,

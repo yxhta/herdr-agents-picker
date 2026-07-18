@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use serde::Deserialize;
 
 use crate::app::App;
@@ -46,10 +48,10 @@ impl Controller {
             self.dimensions = dimensions;
             app.preview_error = None;
             if let Some(target) = self.target.as_deref() {
-                refresh_snapshot(app, client, target);
+                refresh_snapshot(app, client, target, dimensions);
                 self.snapshot_at = Instant::now();
             } else {
-                app.preview.clear();
+                app.preview = Text::default();
                 return;
             }
         }
@@ -87,16 +89,17 @@ impl Controller {
             FALLBACK_REFRESH
         };
         if self.snapshot_at.elapsed() >= refresh_interval {
-            refresh_snapshot(app, client, target);
+            refresh_snapshot(app, client, target, dimensions);
             self.snapshot_at = Instant::now();
         }
     }
 }
 
-fn refresh_snapshot(app: &mut App, client: &Client, target: &str) {
-    app.preview = client
-        .read_agent(target)
-        .unwrap_or_else(|error| format!("preview unavailable: {error}"));
+fn refresh_snapshot(app: &mut App, client: &Client, target: &str, dimensions: (u16, u16)) {
+    app.preview = client.read_agent(target).map_or_else(
+        |error| Text::raw(format!("preview unavailable: {error}")),
+        |ansi| parse_ansi(&ansi, dimensions),
+    );
 }
 
 enum Connection {
@@ -203,9 +206,81 @@ fn next_retry(delay: Duration) -> Duration {
 }
 
 enum ConnectionUpdate {
-    Updated { revision: u64, text: String },
+    Updated { revision: u64, text: Text<'static> },
     Waiting,
     Ended(Option<String>),
+}
+
+fn parse_ansi(ansi: &str, dimensions: (u16, u16)) -> Text<'static> {
+    let (columns, rows) = dimensions;
+    let mut parser = vt100::Parser::new(rows, columns, 0);
+    parser.process(ansi.as_bytes());
+    terminal_text(parser.screen())
+}
+
+fn terminal_text(screen: &vt100::Screen) -> Text<'static> {
+    let (rows, columns) = screen.size();
+    Text::from(
+        (0..rows)
+            .map(|row| terminal_line(screen, row, columns))
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn terminal_line(screen: &vt100::Screen, row: u16, columns: u16) -> Line<'static> {
+    let mut spans = Vec::new();
+    let mut contents = String::with_capacity(usize::from(columns));
+    let mut current_style = Style::default();
+
+    for column in 0..columns {
+        let Some(cell) = screen.cell(row, column) else {
+            continue;
+        };
+        if cell.is_wide_continuation() {
+            continue;
+        }
+
+        let style = cell_style(cell);
+        if style != current_style && !contents.is_empty() {
+            spans.push(Span::styled(std::mem::take(&mut contents), current_style));
+        }
+        current_style = style;
+        if cell.has_contents() {
+            contents.push_str(&cell.contents());
+        } else {
+            contents.push(' ');
+        }
+    }
+
+    if !contents.is_empty() {
+        spans.push(Span::styled(contents, current_style));
+    }
+    Line::from(spans)
+}
+
+fn cell_style(cell: &vt100::Cell) -> Style {
+    let mut style = Style::default();
+    if let Some(color) = terminal_color(cell.fgcolor()) {
+        style = style.fg(color);
+    }
+    if let Some(color) = terminal_color(cell.bgcolor()) {
+        style = style.bg(color);
+    }
+
+    let mut modifiers = Modifier::empty();
+    modifiers.set(Modifier::BOLD, cell.bold());
+    modifiers.set(Modifier::ITALIC, cell.italic());
+    modifiers.set(Modifier::UNDERLINED, cell.underline());
+    modifiers.set(Modifier::REVERSED, cell.inverse());
+    style.add_modifier(modifiers)
+}
+
+fn terminal_color(color: vt100::Color) -> Option<Color> {
+    match color {
+        vt100::Color::Default => None,
+        vt100::Color::Idx(index) => Some(Color::Indexed(index)),
+        vt100::Color::Rgb(red, green, blue) => Some(Color::Rgb(red, green, blue)),
+    }
 }
 
 struct Observer {
@@ -273,7 +348,7 @@ impl Observer {
             if let Some(parser) = &state.parser {
                 return ConnectionUpdate::Updated {
                     revision: state.revision,
-                    text: parser.screen().contents(),
+                    text: terminal_text(parser.screen()),
                 };
             }
         }
@@ -635,5 +710,38 @@ mod tests {
             ),
             (7, true, 80, 24, b"hello".to_vec())
         );
+    }
+
+    #[test]
+    fn ansi_preview_preserves_colors_and_text_modifiers() {
+        let text = parse_ansi("\x1b[31;48;2;1;2;3;1;3;4;7mX", (2, 1));
+        let span = &text.lines[0].spans[0];
+
+        assert_eq!(
+            (
+                span.content.as_ref(),
+                span.style.fg,
+                span.style.bg,
+                span.style.add_modifier,
+            ),
+            (
+                "X",
+                Some(Color::Indexed(1)),
+                Some(Color::Rgb(1, 2, 3)),
+                Modifier::BOLD | Modifier::ITALIC | Modifier::UNDERLINED | Modifier::REVERSED,
+            )
+        );
+    }
+
+    #[test]
+    fn ansi_preview_does_not_duplicate_wide_character_cells() {
+        let text = parse_ansi("界x", (4, 1));
+        let contents = text.lines[0]
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert_eq!(contents, "界x ");
     }
 }

@@ -168,9 +168,10 @@ fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
         let cwd = Line::from(format!(" {} ", app.cwd(index)))
             .right_aligned()
             .dim();
-        let preview =
-            Paragraph::new(app.preview.as_str()).block(block.title(title).title_bottom(cwd));
-        frame.render_widget(preview, area);
+        let block = block.title(title).title_bottom(cwd);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        frame.render_widget(&app.preview, inner);
     } else {
         let inner = block.inner(area);
         frame.render_widget(block.title(Line::from(" Preview ").dim()), area);
@@ -291,6 +292,7 @@ mod tests {
     use super::*;
     use crate::herdr::parse_agent_list;
     use ratatui::backend::TestBackend;
+    use ratatui::text::Text;
     use ratatui::Terminal;
 
     fn sample_app() -> App {
@@ -386,6 +388,28 @@ mod tests {
     #[test]
     fn preview_dimensions_match_the_odd_width_layout() {
         assert_eq!(preview_dimensions(Rect::new(0, 0, 81, 24)), (38, 21));
+    }
+
+    #[test]
+    fn preview_renders_the_stored_terminal_style() {
+        let mut app = sample_app();
+        app.preview = Text::styled(
+            "X",
+            Style::new()
+                .fg(Color::Indexed(1))
+                .bg(Color::Rgb(1, 2, 3))
+                .bold(),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        let frame = terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let [_, preview_area, _] = areas(Rect::new(0, 0, 100, 20));
+        let position = Block::bordered().inner(preview_area).as_position();
+        let cell = frame.buffer.cell(position).unwrap();
+
+        assert_eq!(
+            (cell.symbol(), cell.fg, cell.bg, cell.modifier),
+            ("X", Color::Indexed(1), Color::Rgb(1, 2, 3), Modifier::BOLD,)
+        );
     }
 
     #[test]

@@ -267,7 +267,7 @@ impl Client {
 
     pub fn read_agent(&self, target: &str) -> Result<String, Error> {
         parse_read_text(&self.run(&[
-            "agent", "read", target, "--source", "visible", "--format", "text",
+            "agent", "read", target, "--source", "visible", "--format", "ansi",
         ])?)
     }
 

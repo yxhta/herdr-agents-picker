@@ -94,8 +94,9 @@ herdr plugin pane open --plugin yxhta.agents-picker --entrypoint picker
   live preview, and `agent focus` on Enter (issued after the TUI exits, before
   the process ends). `agent read` is the preview fallback.
 - Live ANSI frames are decoded on a reader thread into a bounded in-memory
-  terminal screen. The TUI renders only the newest screen state, so fast agent
-  output cannot build an unbounded update queue.
+  terminal screen. Foreground/background colors and text modifiers are
+  preserved in both live and fallback previews. The TUI renders only the newest
+  screen state, so fast agent output cannot build an unbounded update queue.
 - Focus targets prefer `terminal_id` over `pane_id` because pane ids compact
   when panes close.
 - The workspace/tab label mirrors the built-in sidebar's default agent row:
