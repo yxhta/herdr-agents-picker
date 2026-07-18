@@ -51,10 +51,9 @@ highlighted in the list.
 
 ## Setup
 
-Build (this repo has no global Rust toolchain; go through mise):
+Build (if this checkout has no global Rust toolchain, go through mise):
 
 ```sh
-cd herdr/plugins/agents-picker
 mise x rust@stable -- cargo build --release
 ```
 
@@ -64,7 +63,7 @@ Link into Herdr once (one-time, like `mise trust`):
 herdr plugin link "$PWD"
 ```
 
-Keybinding in `herdr/config.toml` (already configured, `prefix+f`):
+Keybinding in herdr's `config.toml` (e.g. `prefix+f`):
 
 ```toml
 [[keys.command]]
