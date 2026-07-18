@@ -15,7 +15,7 @@ use ratatui::DefaultTerminal;
 use app::{App, Mode};
 use herdr::Client;
 
-/// Redraw cadence; 100ms keeps the working-status spinner at ~10fps.
+/// Redraw cadence; the spinner frame advances independently at Herdr's ~8fps.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const LIST_REFRESH: Duration = Duration::from_secs(2);
 const RESIZE_SETTLE: Duration = Duration::from_millis(150);

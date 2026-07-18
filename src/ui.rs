@@ -6,8 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, Mode};
 
-/// Braille spinner for agents that are actively working; one frame per
-/// `App::spinner_tick` (~100ms).
+/// Herdr's Braille spinner for agents that are actively working.
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -265,15 +264,14 @@ fn highlight_line<'a>(text: &'a str, offset: usize, indices: &[usize], base: Sty
     Line::from(spans)
 }
 
-/// Status shapes differ (not just colors) so states stay distinguishable
-/// without color vision: spinner=working, ●=blocked, ✓=done, ○=idle.
+/// Mirrors Herdr's built-in Agents sidebar `state_icon` token.
 fn status_glyph(status: &str, tick: usize) -> &'static str {
     match status {
         "working" => SPINNER[tick % SPINNER.len()],
-        "blocked" => "●",
-        "done" => "✓",
-        "idle" => "○",
-        _ => "·",
+        "blocked" => "◉",
+        "done" => "●",
+        "idle" => "✓",
+        _ => "○",
     }
 }
 
@@ -281,8 +279,8 @@ fn status_style(status: &str) -> Style {
     let color = match status {
         "working" => Color::Yellow,
         "blocked" => Color::Red,
-        "done" => Color::Green,
-        "idle" => Color::Blue,
+        "done" => Color::Cyan,
+        "idle" => Color::Green,
         _ => Color::DarkGray,
     };
     Style::new().fg(color)
@@ -328,7 +326,25 @@ mod tests {
         assert!(screen.contains("2/2"));
         assert!(screen.contains("dotfiles work"));
         assert!(screen.contains("(focused)"));
-        assert!(screen.contains("○")); // idle codex
+        assert!(screen.contains("✓")); // idle codex
+    }
+
+    #[test]
+    fn status_icons_match_the_builtin_agents_sidebar() {
+        assert_eq!(status_glyph("working", 0), "⠋");
+        assert_eq!(status_glyph("blocked", 0), "◉");
+        assert_eq!(status_glyph("done", 0), "●");
+        assert_eq!(status_glyph("idle", 0), "✓");
+        assert_eq!(status_glyph("unknown", 0), "○");
+    }
+
+    #[test]
+    fn status_colors_match_the_builtin_agents_sidebar() {
+        assert_eq!(status_style("working").fg, Some(Color::Yellow));
+        assert_eq!(status_style("blocked").fg, Some(Color::Red));
+        assert_eq!(status_style("done").fg, Some(Color::Cyan));
+        assert_eq!(status_style("idle").fg, Some(Color::Green));
+        assert_eq!(status_style("unknown").fg, Some(Color::DarkGray));
     }
 
     #[test]

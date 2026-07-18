@@ -67,9 +67,9 @@ impl App {
         }
     }
 
-    /// ~100ms tick since the picker opened; drives the working-status spinner.
+    /// Spinner frame since the picker opened, matching Herdr's ~8fps cadence.
     pub fn spinner_tick(&self) -> usize {
-        usize::try_from(self.opened_at.elapsed().as_millis() / 100).unwrap_or(0)
+        usize::try_from(self.opened_at.elapsed().as_millis() / 125).unwrap_or(0)
     }
 
     /// Cached workspace/tab label for `agents[index]`, matching the built-in

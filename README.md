@@ -49,9 +49,9 @@ frames; stream errors are shown in the footer.
 
 ## UI
 
-The status column uses shape as well as color, so states read without color
-vision: braille spinner (yellow) = working, `●` (red) = blocked, `✓` (green) =
-done, `○` (blue) = idle. While searching, fuzzy-matched characters are
+The status column mirrors Herdr's built-in Agents sidebar: braille spinner
+(yellow) = working, `◉` (red) = blocked, `●` (teal) = done, `✓` (green) = idle,
+and `○` (dim) = unknown. While searching, fuzzy-matched characters are
 highlighted in the list.
 
 ## Setup
