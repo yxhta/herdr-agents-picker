@@ -62,12 +62,14 @@ highlighted in the list.
 
 ## Setup (local checkout)
 
-For development, link a local checkout instead of installing. Build first (if
-the checkout has no global Rust toolchain, go through mise):
+For development, link a local checkout instead of installing. Build first:
 
 ```sh
-mise x rust@stable -- cargo build --release
+cargo build --release
 ```
+
+If you use [mise](https://mise.jdx.dev/), `mise install` provides the Rust
+toolchain declared in `mise.toml`.
 
 Link into Herdr once (one-time, like `mise trust`):
 
@@ -113,9 +115,9 @@ herdr plugin pane open --plugin yxhta.agents-picker --entrypoint picker
 ## Development
 
 ```sh
-mise x rust@stable -- cargo test
-mise x rust@stable -- cargo clippy --all-targets
-mise x rust@stable -- cargo fmt
+cargo test
+cargo clippy --all-targets
+cargo fmt
 ```
 
 The `[[build]]` command in the manifest only runs on `herdr plugin install`
