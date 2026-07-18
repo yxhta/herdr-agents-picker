@@ -304,7 +304,11 @@ impl Client {
             .ok()
             .filter(|bin| !bin.is_empty())
             .unwrap_or_else(|| "herdr".to_string());
-        Self { bin }
+        Self::new(bin)
+    }
+
+    pub fn new(bin: impl Into<String>) -> Self {
+        Self { bin: bin.into() }
     }
 
     pub fn list_agents(&self) -> Result<Vec<Agent>, Error> {

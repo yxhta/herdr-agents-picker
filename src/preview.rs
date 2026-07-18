@@ -15,7 +15,6 @@ use crate::app::App;
 use crate::herdr::Client;
 
 const FALLBACK_REFRESH: Duration = Duration::from_secs(1);
-const HEALTH_REFRESH: Duration = Duration::from_secs(5);
 const INITIAL_RETRY: Duration = Duration::from_secs(2);
 const MAX_RETRY: Duration = Duration::from_secs(30);
 const STDERR_LIMIT: usize = 8 * 1024;
@@ -47,13 +46,12 @@ impl Controller {
             self.target = wanted.map(str::to_owned);
             self.dimensions = dimensions;
             app.preview_error = None;
-            if let Some(target) = self.target.as_deref() {
-                refresh_snapshot(app, client, target, dimensions);
-                self.snapshot_at = Instant::now();
-            } else {
-                app.preview = Text::default();
-                return;
-            }
+            // Blank until the observer's first frame: a `read_agent` snapshot
+            // is laid out at the agent pane's own geometry, so re-parsing it at
+            // preview size draws garbled lines that flash once the live frame
+            // replaces them.
+            app.preview = Text::default();
+            self.snapshot_at = Instant::now();
         }
 
         let Some(target) = self.target.as_deref() else {
@@ -66,6 +64,8 @@ impl Controller {
                 .connect_if_due(client, target, dimensions, &self.reaper, now)
         {
             app.preview_error = Some(error);
+            refresh_snapshot(app, client, target, dimensions);
+            self.snapshot_at = Instant::now();
         }
 
         match self.connection.poll() {
@@ -83,12 +83,10 @@ impl Controller {
             ConnectionUpdate::Waiting => {}
         }
 
-        let refresh_interval = if self.connection.is_observing() {
-            HEALTH_REFRESH
-        } else {
-            FALLBACK_REFRESH
-        };
-        if self.snapshot_at.elapsed() >= refresh_interval {
+        // Snapshots are only a stand-in until the observer delivers a frame;
+        // overwriting a live frame with a geometry-mismatched snapshot makes
+        // the preview flicker.
+        if !self.connection.has_rendered_frame() && self.snapshot_at.elapsed() >= FALLBACK_REFRESH {
             refresh_snapshot(app, client, target, dimensions);
             self.snapshot_at = Instant::now();
         }
@@ -196,8 +194,8 @@ impl Connection {
         };
     }
 
-    fn is_observing(&self) -> bool {
-        matches!(self, Self::Observing { .. })
+    fn has_rendered_frame(&self) -> bool {
+        matches!(self, Self::Observing { rendered_revision, .. } if *rendered_revision > 0)
     }
 }
 
@@ -710,6 +708,57 @@ mod tests {
             ),
             (7, true, 80, 24, b"hello".to_vec())
         );
+    }
+
+    fn observing_connection(rendered_revision: u64) -> Connection {
+        Connection::Observing {
+            observer: Observer {
+                child: None,
+                readers: Vec::new(),
+                shared: Arc::new(Mutex::new(StreamState::default())),
+                reaper: None,
+            },
+            rendered_revision,
+            retry_delay: INITIAL_RETRY,
+        }
+    }
+
+    #[test]
+    fn snapshot_fallback_stops_once_a_live_frame_is_rendered() {
+        assert_eq!(
+            (
+                Connection::disconnected_now().has_rendered_frame(),
+                observing_connection(0).has_rendered_frame(),
+                observing_connection(1).has_rendered_frame(),
+            ),
+            (false, false, true)
+        );
+    }
+
+    #[test]
+    fn selection_change_falls_back_to_snapshot_when_observer_cannot_start() {
+        let client = Client::new("/dev/null/not-a-herdr-binary");
+        let mut app = crate::app::App::new(None, None);
+        app.set_agents(
+            crate::herdr::parse_agent_list(r#"{"result":{"agents":[{"terminal_id":"term_1"}]}}"#)
+                .unwrap(),
+        );
+        let mut controller = Controller::new();
+
+        controller.refresh(&mut app, &client, (10, 4));
+
+        let preview: String = app
+            .preview
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert!(preview.contains("preview unavailable"));
+        assert!(app
+            .preview_error
+            .as_deref()
+            .is_some_and(|error| error.contains("live preview unavailable")));
     }
 
     #[test]
