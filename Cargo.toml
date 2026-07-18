@@ -16,6 +16,7 @@ nonstandard-style = "deny"
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+needless_collect = "warn"
 redundant_clone = "warn"
 
 [profile.release]

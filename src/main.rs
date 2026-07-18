@@ -19,8 +19,8 @@ const LIST_REFRESH: Duration = Duration::from_secs(2);
 const PREVIEW_REFRESH: Duration = Duration::from_secs(1);
 
 fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
+    let argument = env::args().nth(1);
+    match argument.as_deref() {
         None => run_picker(),
         Some("--open") => open_picker_pane(),
         Some("--help" | "-h") => {
@@ -201,7 +201,9 @@ fn refresh_preview(
             .unwrap_or_else(|error| format!("preview unavailable: {error}")),
         None => String::new(),
     };
-    *preview_for = wanted.map(str::to_string);
+    if wanted != preview_for.as_deref() {
+        *preview_for = wanted.map(str::to_string);
+    }
     app.preview = preview;
     *previewed_at = Instant::now();
 }

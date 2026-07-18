@@ -20,7 +20,7 @@ pub enum Error {
 /// One detected agent pane, as reported by `herdr agent list`.
 // Field names mirror the herdr CLI JSON payload keys verbatim.
 #[expect(clippy::struct_field_names)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Agent {
     pub agent: Option<String>,
     pub agent_status: Option<String>,
@@ -163,13 +163,13 @@ struct TabEntry {
     number: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct WorkspaceInfo {
     label: String,
     tab_count: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct TabInfo {
     label: String,
     /// True when the label is just the tab's own number ("1", "2", …), i.e.
@@ -181,7 +181,7 @@ struct TabInfo {
 /// Workspace/tab labels, as shown in the built-in sidebar's "agents" panel:
 /// workspace name, plus the tab name when the workspace has more than one
 /// tab or the tab was given a custom (non-numeric) name.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct WorkspaceIndex {
     workspaces: HashMap<String, WorkspaceInfo>,
     tabs: HashMap<String, TabInfo>,

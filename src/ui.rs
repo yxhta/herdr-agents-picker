@@ -304,7 +304,6 @@ mod tests {
         let frame = terminal.draw(|frame| draw(frame, app)).unwrap();
         frame
             .buffer
-            .clone()
             .content
             .iter()
             .map(ratatui::buffer::Cell::symbol)
