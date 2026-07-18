@@ -2,6 +2,11 @@
 name = "agents-picker"
 version = "0.1.0"
 edition = "2021"
+description = "Workspace-picker-style fuzzy picker for Herdr-detected agent panes"
+license = "MIT"
+repository = "https://github.com/yxhta/herdr-agents-picker"
+readme = "README.md"
+publish = false
 
 [dependencies]
 base64 = "0.22.1"

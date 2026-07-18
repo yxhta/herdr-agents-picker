@@ -8,8 +8,14 @@ Each row shows the workspace and tab name exactly as the built-in sidebar's
 "agents" panel does (no raw pane ids). If the picker is opened from inside an
 agent session, that agent starts pre-selected.
 
-Replaces the fzf-based `bin/herdr-agent-picker` script with a proper Herdr
-plugin (the script is kept as a fallback).
+## Install
+
+```sh
+herdr plugin install yxhta/herdr-agents-picker
+```
+
+Requires Herdr 0.7.2+ on macOS or Linux. The install step builds the plugin
+from source (`cargo build --release --locked`), so a Rust toolchain is needed.
 
 ## Keys
 
@@ -54,9 +60,10 @@ The status column mirrors Herdr's built-in Agents sidebar: braille spinner
 and `○` (dim) = unknown. While searching, fuzzy-matched characters are
 highlighted in the list.
 
-## Setup
+## Setup (local checkout)
 
-Build (if this checkout has no global Rust toolchain, go through mise):
+For development, link a local checkout instead of installing. Build first (if
+the checkout has no global Rust toolchain, go through mise):
 
 ```sh
 mise x rust@stable -- cargo build --release
@@ -112,4 +119,8 @@ mise x rust@stable -- cargo fmt
 ```
 
 The `[[build]]` command in the manifest only runs on `herdr plugin install`
-from GitHub; linked checkouts (this repo) build manually as above.
+from GitHub; linked checkouts build manually as above.
+
+## License
+
+[MIT](LICENSE)
