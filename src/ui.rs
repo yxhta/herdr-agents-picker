@@ -145,10 +145,14 @@ fn draw_list(frame: &mut Frame, app: &mut App, area: Rect) {
         ],
     )
     .column_spacing(1)
-    .row_highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+    .row_highlight_style(selected_row_style());
 
     frame.render_stateful_widget(table, area, &mut table_state);
     app.table_state = table_state;
+}
+
+fn selected_row_style() -> Style {
+    Style::new().bg(Color::DarkGray)
 }
 
 fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
@@ -347,6 +351,16 @@ mod tests {
         assert_eq!(status_style("done").fg, Some(Color::Cyan));
         assert_eq!(status_style("idle").fg, Some(Color::Green));
         assert_eq!(status_style("unknown").fg, Some(Color::DarkGray));
+    }
+
+    #[test]
+    fn selected_row_uses_a_subtle_background_without_reversing_colors() {
+        let style = selected_row_style();
+
+        assert_eq!(
+            (style.bg, style.add_modifier),
+            (Some(Color::DarkGray), Modifier::empty())
+        );
     }
 
     #[test]
