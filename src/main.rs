@@ -1,6 +1,7 @@
 mod app;
 mod fuzzy;
 mod herdr;
+mod preview;
 mod ui;
 
 use std::env;
@@ -8,6 +9,7 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::layout::Rect;
 use ratatui::DefaultTerminal;
 
 use app::{App, Mode};
@@ -16,7 +18,7 @@ use herdr::Client;
 /// Redraw cadence; 100ms keeps the working-status spinner at ~10fps.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const LIST_REFRESH: Duration = Duration::from_secs(2);
-const PREVIEW_REFRESH: Duration = Duration::from_secs(1);
+const RESIZE_SETTLE: Duration = Duration::from_millis(150);
 
 fn main() -> ExitCode {
     let argument = env::args().nth(1);
@@ -94,24 +96,35 @@ fn run_picker() -> ExitCode {
 }
 
 /// Runs until the user picks an agent (returns its target) or cancels
-/// (returns None). The agent list and pane preview refresh periodically.
+/// (returns None). The agent list refreshes periodically; preview frames stream
+/// from the selected agent.
 fn event_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     client: &Client,
 ) -> std::io::Result<Option<String>> {
     let mut listed_at = Instant::now();
-    // `preview_for` starts as None, so the first draw with a selection
-    // refreshes immediately; no need to backdate the timestamp.
-    let mut previewed_at = Instant::now();
-    let mut preview_for: Option<String> = None;
+    let mut preview = preview::Controller::new();
+    let size = terminal.size()?;
+    let mut preview_size = ui::preview_dimensions(Rect::new(0, 0, size.width, size.height));
+    let mut pending_resize: Option<(u16, u16, Instant)> = None;
 
     loop {
-        refresh_preview(app, client, &mut preview_for, &mut previewed_at);
+        if let Some((width, height, resized_at)) = pending_resize {
+            if resized_at.elapsed() >= RESIZE_SETTLE {
+                preview_size = ui::preview_dimensions(Rect::new(0, 0, width, height));
+                pending_resize = None;
+            }
+        }
+        preview.refresh(app, client, preview_size);
         terminal.draw(|frame| ui::draw(frame, app))?;
 
         if event::poll(POLL_INTERVAL)? {
-            if let Event::Key(key) = event::read()? {
+            let next_event = event::read()?;
+            if let Event::Resize(width, height) = next_event {
+                pending_resize = Some((width, height, Instant::now()));
+            }
+            if let Event::Key(key) = next_event {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
@@ -180,30 +193,4 @@ fn reload_agents(app: &mut App, client: &Client) {
         }
         Err(error) => app.error = Some(error.to_string()),
     }
-}
-
-fn refresh_preview(
-    app: &mut App,
-    client: &Client,
-    preview_for: &mut Option<String>,
-    previewed_at: &mut Instant,
-) {
-    // Compare as &str first so the unchanged-selection fast path (every
-    // 100ms tick) never allocates.
-    let wanted = app.selected_agent().and_then(|agent| agent.target());
-    let stale = previewed_at.elapsed() >= PREVIEW_REFRESH;
-    if wanted == preview_for.as_deref() && !stale {
-        return;
-    }
-    let preview = match wanted {
-        Some(target) => client
-            .read_agent(target)
-            .unwrap_or_else(|error| format!("preview unavailable: {error}")),
-        None => String::new(),
-    };
-    if wanted != preview_for.as_deref() {
-        *preview_for = wanted.map(str::to_string);
-    }
-    app.preview = preview;
-    *previewed_at = Instant::now();
 }

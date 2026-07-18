@@ -22,6 +22,7 @@ pub struct App {
     pub table_state: TableState,
     pub preview: String,
     pub error: Option<String>,
+    pub preview_error: Option<String>,
     home: Option<String>,
     /// Our own pane id (`HERDR_PANE_ID`); the picker pane can show up in
     /// `agent list` when opened as a split/tab, and listing itself is noise.
@@ -53,6 +54,7 @@ impl App {
             table_state: TableState::default(),
             preview: String::new(),
             error: None,
+            preview_error: None,
             home,
             self_pane,
             workspaces: WorkspaceIndex::default(),

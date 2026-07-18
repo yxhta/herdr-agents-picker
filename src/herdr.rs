@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 
 use serde::Deserialize;
 
@@ -273,6 +273,22 @@ impl Client {
 
     pub fn focus_agent(&self, target: &str) -> Result<(), Error> {
         self.run(&["agent", "focus", target]).map(|_| ())
+    }
+
+    pub fn observe_agent(&self, target: &str, columns: u16, rows: u16) -> Result<Child, Error> {
+        Command::new(&self.bin)
+            .args(["terminal", "session", "observe", target, "--cols"])
+            .arg(columns.to_string())
+            .arg("--rows")
+            .arg(rows.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|source| Error::Spawn {
+                bin: self.bin.clone(),
+                source,
+            })
     }
 
     fn run(&self, args: &[&str]) -> Result<String, Error> {

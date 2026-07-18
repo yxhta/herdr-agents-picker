@@ -11,15 +11,26 @@ use crate::app::{App, Mode};
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let [main_area, footer_area] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-    let [picker_area, preview_area] =
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .areas(main_area);
+    let [picker_area, preview_area, footer_area] = areas(frame.area());
 
     draw_picker(frame, app, picker_area);
     draw_preview(frame, app, preview_area);
     draw_footer(frame, app, footer_area);
+}
+
+fn areas(area: Rect) -> [Rect; 3] {
+    let [main_area, footer_area] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(area);
+    let [picker_area, preview_area] =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .areas(main_area);
+    [picker_area, preview_area, footer_area]
+}
+
+pub fn preview_dimensions(area: Rect) -> (u16, u16) {
+    let [_, preview_area, _] = areas(area);
+    let inner = Block::bordered().inner(preview_area);
+    (inner.width.max(1), inner.height.max(1))
 }
 
 /// Left panel: filter input and agent list inside a single block, so the
@@ -169,7 +180,7 @@ fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
-    let line = match &app.error {
+    let line = match app.error.as_ref().or(app.preview_error.as_ref()) {
         Some(error) => Line::from(vec![
             Span::styled(" ✗ ", Style::new().fg(Color::Red).bold()),
             Span::styled(error.as_str(), Style::new().fg(Color::Red)),
@@ -354,5 +365,18 @@ mod tests {
         let mut app = sample_app();
         render(&mut app, 8, 3);
         render(&mut app, 1, 1);
+    }
+
+    #[test]
+    fn preview_dimensions_match_the_odd_width_layout() {
+        assert_eq!(preview_dimensions(Rect::new(0, 0, 81, 24)), (38, 21));
+    }
+
+    #[test]
+    fn preview_error_is_visible_in_the_footer() {
+        let mut app = sample_app();
+        app.preview_error = Some("live preview unavailable: unsupported command".to_string());
+
+        assert!(render(&mut app, 120, 20).contains("unsupported command"));
     }
 }

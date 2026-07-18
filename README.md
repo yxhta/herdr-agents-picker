@@ -40,7 +40,12 @@ Search mode:
 | `ctrl+u`            | clear the filter                  |
 | `ctrl+w`            | delete the last word              |
 
-The agent list refreshes every 2s and the preview every 1s while open.
+The agent list refreshes every 2s. The selected agent's preview follows its
+live terminal stream and normally appears within the TUI's 100ms redraw
+cadence. If the stream is unavailable, the picker falls back to a 1s snapshot
+refresh and retries the stream with bounded exponential backoff. A low-frequency
+5s snapshot also guards against a stream that stays open but stops producing
+frames; stream errors are shown in the footer.
 
 ## UI
 
@@ -85,8 +90,12 @@ herdr plugin pane open --plugin yxhta.agents-picker --entrypoint picker
   action (`open`) that opens that pane, so a `plugin_action` keybinding works.
 - The TUI talks to the running Herdr instance through the CLI at
   `HERDR_BIN_PATH`: `agent list` for rows, `workspace list` + `tab list` to
-  resolve each row's workspace/tab name, `agent read` for the preview, and
-  `agent focus` on Enter (issued after the TUI exits, before the process ends).
+  resolve each row's workspace/tab name, `terminal session observe` for the
+  live preview, and `agent focus` on Enter (issued after the TUI exits, before
+  the process ends). `agent read` is the preview fallback.
+- Live ANSI frames are decoded on a reader thread into a bounded in-memory
+  terminal screen. The TUI renders only the newest screen state, so fast agent
+  output cannot build an unbounded update queue.
 - Focus targets prefer `terminal_id` over `pane_id` because pane ids compact
   when panes close.
 - The workspace/tab label mirrors the built-in sidebar's default agent row:
