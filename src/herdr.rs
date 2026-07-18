@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use serde::Deserialize;
@@ -15,6 +16,57 @@ pub enum Error {
         what: &'static str,
         source: serde_json::Error,
     },
+    #[error("failed to read Herdr config {path}: {source}")]
+    ConfigRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("invalid Herdr config {path}: {source}")]
+    ConfigParse {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
+    #[error("invalid ui.agent_panel_sort in Herdr config {path}: {value}")]
+    AgentPanelSort { path: PathBuf, value: String },
+}
+
+/// Agent ordering modes exposed by Herdr's built-in sidebar.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AgentPanelSort {
+    #[default]
+    Spaces,
+    Priority,
+}
+
+fn parse_agent_panel_sort(raw: &str, path: &Path) -> Result<AgentPanelSort, Error> {
+    let config: toml::Value = raw.parse().map_err(|source| Error::ConfigParse {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let Some(value) = config.get("ui").and_then(|ui| ui.get("agent_panel_sort")) else {
+        return Ok(AgentPanelSort::Spaces);
+    };
+    match value.as_str() {
+        Some("spaces" | "workspaces") => Ok(AgentPanelSort::Spaces),
+        Some("priority") => Ok(AgentPanelSort::Priority),
+        _ => Err(Error::AgentPanelSort {
+            path: path.to_path_buf(),
+            value: value.to_string(),
+        }),
+    }
+}
+
+fn config_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("HERDR_CONFIG_PATH") {
+        return PathBuf::from(path);
+    }
+    if let Some(path) = std::env::var_os("XDG_CONFIG_HOME") {
+        return PathBuf::from(path).join("herdr/config.toml");
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".config/herdr/config.toml");
+    }
+    std::env::temp_dir().join("herdr/config.toml")
 }
 
 /// One detected agent pane, as reported by `herdr agent list`.
@@ -259,6 +311,18 @@ impl Client {
         parse_agent_list(&self.run(&["agent", "list"])?)
     }
 
+    pub fn agent_panel_sort() -> Result<AgentPanelSort, Error> {
+        let path = config_path();
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(AgentPanelSort::Spaces);
+            }
+            Err(source) => return Err(Error::ConfigRead { path, source }),
+        };
+        parse_agent_panel_sort(&raw, &path)
+    }
+
     pub fn workspace_index(&self) -> Result<WorkspaceIndex, Error> {
         let workspaces = self.run(&["workspace", "list"])?;
         let tabs = self.run(&["tab", "list"])?;
@@ -380,6 +444,33 @@ mod tests {
     fn parse_error_names_the_payload() {
         let err = parse_agent_list("not json").unwrap_err();
         assert!(err.to_string().starts_with("invalid agent list JSON:"));
+    }
+
+    #[test]
+    fn agent_panel_sort_parses_herdr_values_and_default() {
+        let path = Path::new("config.toml");
+        assert_eq!(
+            parse_agent_panel_sort("[ui]\nagent_panel_sort = \"priority\"", path).unwrap(),
+            AgentPanelSort::Priority
+        );
+        assert_eq!(
+            parse_agent_panel_sort("[ui]\nagent_panel_sort = \"workspaces\"", path).unwrap(),
+            AgentPanelSort::Spaces
+        );
+        assert_eq!(
+            parse_agent_panel_sort("[theme]\nname = \"kanagawa\"", path).unwrap(),
+            AgentPanelSort::Spaces
+        );
+    }
+
+    #[test]
+    fn agent_panel_sort_rejects_unknown_value() {
+        let error = parse_agent_panel_sort(
+            "[ui]\nagent_panel_sort = \"recent\"",
+            Path::new("config.toml"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("ui.agent_panel_sort"));
     }
 
     const WORKSPACES: &str = r#"{"result":{"workspaces":[

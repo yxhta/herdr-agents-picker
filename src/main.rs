@@ -1,6 +1,7 @@
 mod app;
 mod fuzzy;
 mod herdr;
+mod order;
 mod preview;
 mod ui;
 
@@ -25,6 +26,13 @@ fn main() -> ExitCode {
     match argument.as_deref() {
         None => run_picker(),
         Some("--open") => open_picker_pane(),
+        Some("--record-status") => match order::record_status_event() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("agents-picker: {error}");
+                ExitCode::FAILURE
+            }
+        },
         Some("--help" | "-h") => {
             println!("agents-picker          run the picker TUI (inside a herdr plugin pane)");
             println!("agents-picker --open   open the picker pane via the herdr CLI");
@@ -67,11 +75,15 @@ fn open_picker_pane() -> ExitCode {
 fn run_picker() -> ExitCode {
     let client = Client::from_env();
     let mut app = App::new(env::var("HOME").ok(), env::var("HERDR_PANE_ID").ok());
+    let setup_error = apply_agent_panel_sort(&mut app).or_else(|| apply_status_order(&mut app));
     if let Ok(index) = client.workspace_index() {
         app.set_workspace_index(index);
     }
     match client.list_agents() {
-        Ok(agents) => app.set_agents(agents),
+        Ok(agents) => {
+            app.set_agents(agents);
+            app.error = setup_error;
+        }
         Err(error) => app.error = Some(error.to_string()),
     }
 
@@ -181,6 +193,7 @@ fn event_loop(
 }
 
 fn reload_agents(app: &mut App, client: &Client) {
+    let setup_error = apply_agent_panel_sort(app).or_else(|| apply_status_order(app));
     // Best-effort: a stale workspace/tab index just shows an old label, so
     // errors here don't need to surface through `app.error`.
     if let Ok(index) = client.workspace_index() {
@@ -189,8 +202,28 @@ fn reload_agents(app: &mut App, client: &Client) {
     match client.list_agents() {
         Ok(agents) => {
             app.set_agents(agents);
-            app.error = None;
+            app.error = setup_error;
         }
         Err(error) => app.error = Some(error.to_string()),
+    }
+}
+
+fn apply_agent_panel_sort(app: &mut App) -> Option<String> {
+    match Client::agent_panel_sort() {
+        Ok(sort) => {
+            app.set_agent_panel_sort(sort);
+            None
+        }
+        Err(error) => Some(error.to_string()),
+    }
+}
+
+fn apply_status_order(app: &mut App) -> Option<String> {
+    match order::load_status_order() {
+        Ok(order) => {
+            app.set_status_order(order);
+            None
+        }
+        Err(error) => Some(error.to_string()),
     }
 }

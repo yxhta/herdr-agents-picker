@@ -1,10 +1,17 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use ratatui::text::Text;
 use ratatui::widgets::TableState;
 
 use crate::fuzzy;
-use crate::herdr::{Agent, WorkspaceIndex};
+use crate::herdr::{Agent, AgentPanelSort, WorkspaceIndex};
+
+struct ObservedStatus {
+    status: String,
+    change_seq: Option<u64>,
+    seen_generation: u64,
+}
 
 /// Input mode, mirroring the built-in workspace picker: plain `j`/`k`
 /// navigate by default, and `/` enters incremental search.
@@ -28,6 +35,11 @@ pub struct App {
     /// Our own pane id (`HERDR_PANE_ID`); the picker pane can show up in
     /// `agent list` when opened as a split/tab, and listing itself is noise.
     self_pane: Option<String>,
+    agent_panel_sort: AgentPanelSort,
+    status_order: HashMap<String, u128>,
+    observed_statuses: HashMap<String, ObservedStatus>,
+    next_status_change_seq: u64,
+    list_generation: u64,
     workspaces: WorkspaceIndex,
     /// Per-agent display strings, parallel to `agents`. Cached so the
     /// per-keystroke filter pass and the per-frame draw stay allocation-free;
@@ -58,6 +70,11 @@ impl App {
             preview_error: None,
             home,
             self_pane,
+            agent_panel_sort: AgentPanelSort::Spaces,
+            status_order: HashMap::new(),
+            observed_statuses: HashMap::new(),
+            next_status_change_seq: 0,
+            list_generation: 0,
             workspaces: WorkspaceIndex::default(),
             locations: Vec::new(),
             labels: Vec::new(),
@@ -103,6 +120,14 @@ impl App {
         self.apply_filter();
     }
 
+    pub fn set_agent_panel_sort(&mut self, sort: AgentPanelSort) {
+        self.agent_panel_sort = sort;
+    }
+
+    pub fn set_status_order(&mut self, order: HashMap<String, u128>) {
+        self.status_order = order;
+    }
+
     /// Replace the agent list, keeping the current selection when its target
     /// still exists (the list refreshes periodically while the picker is open).
     /// On the very first load, pre-selects the agent the user was already in
@@ -114,6 +139,27 @@ impl App {
         let keep = self
             .selected_agent()
             .and_then(|agent| agent.target().map(str::to_string));
+        self.observe_statuses(&agents);
+        if self.agent_panel_sort == AgentPanelSort::Priority {
+            let observed_statuses = &self.observed_statuses;
+            let status_order = &self.status_order;
+            agents.sort_by_key(|agent| {
+                let event_order = agent
+                    .pane_id
+                    .as_deref()
+                    .and_then(|pane_id| status_order.get(pane_id))
+                    .copied();
+                let change_seq = agent
+                    .target()
+                    .and_then(|target| observed_statuses.get(target))
+                    .and_then(|status| status.change_seq);
+                (
+                    std::cmp::Reverse(status_priority(agent.status())),
+                    std::cmp::Reverse(event_order),
+                    std::cmp::Reverse(change_seq),
+                )
+            });
+        }
         self.agents = agents;
         self.rebuild_caches();
         self.apply_filter();
@@ -128,6 +174,40 @@ impl App {
         } else if let Some(position) = self.filtered.iter().position(|&i| self.agents[i].focused) {
             self.table_state.select(Some(position));
         }
+    }
+
+    fn observe_statuses(&mut self, agents: &[Agent]) {
+        self.list_generation = self.list_generation.wrapping_add(1);
+        for agent in agents {
+            let Some(target) = agent.target() else {
+                continue;
+            };
+            let status = agent.status();
+            match self.observed_statuses.get_mut(target) {
+                Some(observed) => {
+                    observed.seen_generation = self.list_generation;
+                    if observed.status != status {
+                        self.next_status_change_seq = self.next_status_change_seq.wrapping_add(1);
+                        observed.status.clear();
+                        observed.status.push_str(status);
+                        observed.change_seq = Some(self.next_status_change_seq);
+                    }
+                }
+                None => {
+                    self.observed_statuses.insert(
+                        target.to_string(),
+                        ObservedStatus {
+                            status: status.to_string(),
+                            change_seq: None,
+                            seen_generation: self.list_generation,
+                        },
+                    );
+                }
+            }
+        }
+        let generation = self.list_generation;
+        self.observed_statuses
+            .retain(|_, status| status.seen_generation == generation);
     }
 
     fn rebuild_caches(&mut self) {
@@ -257,6 +337,16 @@ impl App {
     }
 }
 
+fn status_priority(status: &str) -> u8 {
+    match status {
+        "blocked" => 4,
+        "done" => 3,
+        "working" => 2,
+        "idle" => 1,
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +382,69 @@ mod tests {
         let mut app = App::new(None, None);
         app.set_agents(agents);
         assert_eq!(app.selected_agent().unwrap().target(), Some("term_2"));
+    }
+
+    #[test]
+    fn priority_sort_matches_herdr_attention_order() {
+        let agents = parse_agent_list(
+            r#"{"result":{"agents":[
+                {"agent_status":"working","terminal_id":"working"},
+                {"agent_status":"idle","terminal_id":"idle"},
+                {"agent_status":"done","terminal_id":"done"},
+                {"agent_status":"blocked","terminal_id":"blocked"},
+                {"agent_status":"unknown","terminal_id":"unknown"}
+            ]}}"#,
+        )
+        .unwrap();
+        let mut app = App::new(None, None);
+        app.set_agent_panel_sort(AgentPanelSort::Priority);
+        app.set_agents(agents);
+        let targets: Vec<_> = app.agents.iter().filter_map(Agent::target).collect();
+        assert_eq!(targets, ["blocked", "done", "working", "idle", "unknown"]);
+    }
+
+    #[test]
+    fn priority_sort_promotes_most_recent_status_change_within_tie() {
+        let mut app = App::new(None, None);
+        app.set_agent_panel_sort(AgentPanelSort::Priority);
+        app.set_agents(
+            parse_agent_list(
+                r#"{"result":{"agents":[
+                    {"agent_status":"idle","terminal_id":"older"},
+                    {"agent_status":"working","terminal_id":"newer"}
+                ]}}"#,
+            )
+            .unwrap(),
+        );
+        app.set_agents(
+            parse_agent_list(
+                r#"{"result":{"agents":[
+                    {"agent_status":"idle","terminal_id":"older"},
+                    {"agent_status":"idle","terminal_id":"newer"}
+                ]}}"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(app.agents[0].target(), Some("newer"));
+    }
+
+    #[test]
+    fn priority_sort_uses_persisted_event_order_within_tie() {
+        let agents = parse_agent_list(
+            r#"{"result":{"agents":[
+                {"agent_status":"idle","pane_id":"w1:p1","terminal_id":"older"},
+                {"agent_status":"idle","pane_id":"w2:p1","terminal_id":"newer"}
+            ]}}"#,
+        )
+        .unwrap();
+        let mut app = App::new(None, None);
+        app.set_agent_panel_sort(AgentPanelSort::Priority);
+        app.set_status_order(HashMap::from([
+            ("w1:p1".to_string(), 10),
+            ("w2:p1".to_string(), 20),
+        ]));
+        app.set_agents(agents);
+        assert_eq!(app.agents[0].target(), Some("newer"));
     }
 
     #[test]

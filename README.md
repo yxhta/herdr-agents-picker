@@ -55,6 +55,13 @@ refresh and retries the stream with bounded exponential backoff. A low-frequency
 5s snapshot also guards against a stream that stays open but stops producing
 frames; stream errors are shown in the footer.
 
+The default list order mirrors Herdr's built-in Agents sidebar and follows
+`ui.agent_panel_sort`: `spaces` keeps workspace/tab/pane grouping, while
+`priority` orders agents by attention (`blocked`, `done`, `working`, `idle`,
+then `unknown`). Within the same state, the plugin records Herdr status-change
+events and shows the most recently changed agent first. Configuration changes
+are picked up on the next list refresh.
+
 ## UI
 
 The status column mirrors Herdr's built-in Agents sidebar: braille spinner

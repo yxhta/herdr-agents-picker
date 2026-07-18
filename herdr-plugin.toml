@@ -18,6 +18,10 @@ title = "Open agents picker"
 contexts = ["workspace"]
 command = ["./target/release/agents-picker", "--open"]
 
+[[events]]
+on = "pane.agent_status_changed"
+command = ["./target/release/agents-picker", "--record-status"]
+
 [[panes]]
 id = "picker"
 title = "Agents"
