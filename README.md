@@ -4,6 +4,8 @@ Herdr plugin: a workspace-picker-style fuzzy picker for Herdr-detected agent
 panes. Opens as a modal popup, filters as you type, previews the selected
 agent's pane on the right, and focuses it on Enter. Rust + ratatui.
 
+![agents-picker running inside Herdr: agent list on the left, live preview of the selected agent's pane on the right](docs/screenshot.png)
+
 Each row shows the workspace and tab name exactly as the built-in sidebar's
 "agents" panel does (no raw pane ids). If the picker is opened from inside an
 agent session, that agent starts pre-selected.
