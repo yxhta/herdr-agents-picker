@@ -381,7 +381,7 @@ mod tests {
         .unwrap();
         let mut app = App::new(None, None);
         app.set_agents(agents);
-        assert_eq!(app.selected_agent().unwrap().target(), Some("term_2"));
+        assert_eq!(app.selected_agent().unwrap().target(), Some("w2:p1"));
     }
 
     #[test]
@@ -444,7 +444,7 @@ mod tests {
             ("w2:p1".to_string(), 20),
         ]));
         app.set_agents(agents);
-        assert_eq!(app.agents[0].target(), Some("newer"));
+        assert_eq!(app.agents[0].target(), Some("w2:p1"));
     }
 
     #[test]
@@ -465,7 +465,7 @@ mod tests {
     fn selection_survives_agent_refresh() {
         let mut app = sample_app();
         app.move_selection(1);
-        assert_eq!(app.selected_agent().unwrap().target(), Some("term_2"));
+        assert_eq!(app.selected_agent().unwrap().target(), Some("w2:p1"));
 
         // term_1 disappeared; term_2 moved to the front.
         let refreshed = parse_agent_list(
@@ -478,7 +478,7 @@ mod tests {
         )
         .unwrap();
         app.set_agents(refreshed);
-        assert_eq!(app.selected_agent().unwrap().target(), Some("term_2"));
+        assert_eq!(app.selected_agent().unwrap().target(), Some("w2:p1"));
     }
 
     #[test]
@@ -518,7 +518,7 @@ mod tests {
         let mut app = App::new(None, Some("w1:p9".to_string()));
         app.set_agents(agents);
         assert_eq!(app.agents.len(), 1);
-        assert_eq!(app.agents[0].target(), Some("term_1"));
+        assert_eq!(app.agents[0].target(), Some("w1:p1"));
     }
 
     #[test]

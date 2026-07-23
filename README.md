@@ -115,8 +115,9 @@ herdr plugin pane open --plugin yxhta.agents-picker --entrypoint picker
   terminal screen. Foreground/background colors and text modifiers are
   preserved in both live and fallback previews. The TUI renders only the newest
   screen state, so fast agent output cannot build an unbounded update queue.
-- Focus targets prefer `terminal_id` over `pane_id` because pane ids compact
-  when panes close.
+- Focus targets prefer `pane_id` over `terminal_id`: `herdr agent
+  {focus,get,read}` only resolve `pane_id` targets as of Herdr 0.7.5, so
+  `terminal_id` is kept only as a fallback for agents without one.
 - The workspace/tab label mirrors the built-in sidebar's default agent row:
   workspace name, plus the tab name only when the workspace has more than one
   tab or the tab was given a custom (non-numeric) name.

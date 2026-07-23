@@ -88,10 +88,12 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// Focus/read target. Herdr accepts either id; prefer the terminal id
-    /// because pane ids compact when panes close.
+    /// Focus/read/get target. `herdr agent {focus,get,read}` only resolve
+    /// `pane_id` targets (`terminal_id` started returning `agent_not_found`
+    /// on Herdr 0.7.5); `terminal_id` is kept as a fallback for older
+    /// Herdr builds or agents Herdr reports without a `pane_id`.
     pub fn target(&self) -> Option<&str> {
-        non_empty(self.terminal_id.as_deref()).or_else(|| non_empty(self.pane_id.as_deref()))
+        non_empty(self.pane_id.as_deref()).or_else(|| non_empty(self.terminal_id.as_deref()))
     }
 
     pub fn kind(&self) -> &str {
@@ -403,9 +405,9 @@ mod tests {
     }
 
     #[test]
-    fn target_prefers_terminal_id_and_falls_back_to_pane_id() {
+    fn target_prefers_pane_id_and_falls_back_to_terminal_id() {
         let agents = parse_agent_list(SAMPLE).unwrap();
-        assert_eq!(agents[0].target(), Some("term_abc"));
+        assert_eq!(agents[0].target(), Some("w2:p1"));
         assert_eq!(agents[1].target(), Some("w7:p2"));
     }
 
