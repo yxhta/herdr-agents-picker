@@ -96,6 +96,16 @@ impl Agent {
         non_empty(self.pane_id.as_deref()).or_else(|| non_empty(self.terminal_id.as_deref()))
     }
 
+    /// Everything `Client::focus_agent` needs, owned so it outlives the
+    /// agent list the picker keeps refreshing.
+    pub fn focus(&self) -> Option<Focus> {
+        Some(Focus {
+            workspace_id: non_empty(self.workspace_id.as_deref()).map(str::to_string),
+            tab_id: non_empty(self.tab_id.as_deref()).map(str::to_string),
+            target: self.target()?.to_string(),
+        })
+    }
+
     pub fn kind(&self) -> &str {
         non_empty(self.agent.as_deref()).unwrap_or("-")
     }
@@ -129,6 +139,14 @@ impl Agent {
             None => cwd.to_string(),
         }
     }
+}
+
+/// Where an agent lives, resolved once at pick time.
+#[derive(Debug)]
+pub struct Focus {
+    pub workspace_id: Option<String>,
+    pub tab_id: Option<String>,
+    pub target: String,
 }
 
 fn non_empty(value: Option<&str>) -> Option<&str> {
@@ -341,8 +359,17 @@ impl Client {
         ])?)
     }
 
-    pub fn focus_agent(&self, target: &str) -> Result<(), Error> {
-        self.run(&["agent", "focus", target]).map(|_| ())
+    /// Herdr 0.9.0 renders the UI in each client, and `agent focus` alone only
+    /// moves the server-side pane focus — the viewing client stays where it
+    /// is. Switching its workspace and tab first is what actually navigates.
+    pub fn focus_agent(&self, focus: &Focus) -> Result<(), Error> {
+        if let Some(workspace_id) = &focus.workspace_id {
+            self.run(&["workspace", "focus", workspace_id])?;
+        }
+        if let Some(tab_id) = &focus.tab_id {
+            self.run(&["tab", "focus", tab_id])?;
+        }
+        self.run(&["agent", "focus", &focus.target]).map(|_| ())
     }
 
     pub fn observe_agent(&self, target: &str, columns: u16, rows: u16) -> Result<Child, Error> {
@@ -409,6 +436,15 @@ mod tests {
         let agents = parse_agent_list(SAMPLE).unwrap();
         assert_eq!(agents[0].target(), Some("w2:p1"));
         assert_eq!(agents[1].target(), Some("w7:p2"));
+    }
+
+    #[test]
+    fn focus_carries_the_workspace_and_tab_the_client_must_switch_to() {
+        let agents = parse_agent_list(SAMPLE).unwrap();
+        let focus = agents[0].focus().unwrap();
+        assert_eq!(focus.workspace_id.as_deref(), Some("w2"));
+        assert_eq!(focus.tab_id.as_deref(), Some("w2:t1"));
+        assert_eq!(focus.target, "w2:p1");
     }
 
     #[test]

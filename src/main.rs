@@ -14,7 +14,7 @@ use ratatui::layout::Rect;
 use ratatui::DefaultTerminal;
 
 use app::{App, Mode};
-use herdr::Client;
+use herdr::{Agent, Client};
 
 /// Redraw cadence; the spinner frame advances independently at Herdr's ~8fps.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -92,7 +92,7 @@ fn run_picker() -> ExitCode {
     ratatui::restore();
 
     match result {
-        Ok(Some(target)) => match client.focus_agent(&target) {
+        Ok(Some(focus)) => match client.focus_agent(&focus) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("agents-picker: {error}");
@@ -114,7 +114,7 @@ fn event_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     client: &Client,
-) -> std::io::Result<Option<String>> {
+) -> std::io::Result<Option<herdr::Focus>> {
     let mut listed_at = Instant::now();
     let mut preview = preview::Controller::new();
     let size = terminal.size()?;
@@ -145,8 +145,8 @@ fn event_loop(
                     return Ok(None);
                 }
                 if key.code == KeyCode::Enter {
-                    if let Some(target) = app.selected_agent().and_then(|a| a.target()) {
-                        return Ok(Some(target.to_string()));
+                    if let Some(focus) = app.selected_agent().and_then(Agent::focus) {
+                        return Ok(Some(focus));
                     }
                     continue;
                 }
