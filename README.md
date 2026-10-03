@@ -130,6 +130,22 @@ cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo fmt --all -- --check
 ```
 
+Measure drawing and filtering with a 160×32 in-memory terminal:
+
+```sh
+cargo run --release --locked --example interaction
+```
+
+The benchmark prints microseconds per iteration for 20, 200, and 2,000
+synthetic agents. `draw` measures a full frame; `search_draw` also applies
+the filter and computes rankings and highlights. Both validate the result.
+Herdr CLI calls, preview streaming, and terminal I/O are outside the timed region.
+Set `PICKER_BENCH_ITERATIONS` to change the default 100 iterations, or
+`PICKER_BENCH_AGENTS` to use a single positive agent count. Compare release
+binaries in alternating order over at least five runs. Report the median
+and range. `--snapshot` prints screens and selection states for scrolling,
+resizing, and filtering comparisons.
+
 The `[[build]]` command in the manifest only runs on `herdr plugin install`
 from GitHub; linked checkouts build manually as above.
 
