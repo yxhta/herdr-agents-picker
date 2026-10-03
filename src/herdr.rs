@@ -471,9 +471,11 @@ mod tests {
 
     #[test]
     fn parses_empty_and_read_payloads() {
-        assert!(parse_agent_list(r#"{"result":{"agents":[]}}"#)
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_agent_list(r#"{"result":{"agents":[]}}"#)
+                .unwrap()
+                .is_empty()
+        );
         assert!(parse_agent_list("not json").is_err());
         assert_eq!(
             parse_read_text(r#"{"result":{"read":{"text":"hello"}}}"#).unwrap(),

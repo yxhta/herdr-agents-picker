@@ -1,7 +1,7 @@
 [package]
 name = "agents-picker"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Workspace-picker-style fuzzy picker for Herdr-detected agent panes"
 license = "MIT"
 repository = "https://github.com/yxhta/herdr-agents-picker"
@@ -18,6 +18,7 @@ toml = "0.8"
 vt100 = "0.15.2"
 
 [lints.rust]
+unsafe_code = "forbid"
 future-incompatible = "warn"
 nonstandard-style = "deny"
 
@@ -26,6 +27,8 @@ all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 needless_collect = "warn"
 redundant_clone = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
 
 [profile.release]
 lto = true

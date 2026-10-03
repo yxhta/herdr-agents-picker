@@ -9,9 +9,9 @@ use std::env;
 use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
+use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
-use ratatui::DefaultTerminal;
 
 use app::{App, Mode};
 use herdr::{Agent, Client};
@@ -75,17 +75,7 @@ fn open_picker_pane() -> ExitCode {
 fn run_picker() -> ExitCode {
     let client = Client::from_env();
     let mut app = App::new(env::var("HOME").ok(), env::var("HERDR_PANE_ID").ok());
-    let setup_error = apply_agent_panel_sort(&mut app).or_else(|| apply_status_order(&mut app));
-    if let Ok(index) = client.workspace_index() {
-        app.set_workspace_index(index);
-    }
-    match client.list_agents() {
-        Ok(agents) => {
-            app.set_agents(agents);
-            app.error = setup_error;
-        }
-        Err(error) => app.error = Some(error.to_string()),
-    }
+    reload_agents(&mut app, &client);
 
     let mut terminal = ratatui::init();
     let result = event_loop(&mut terminal, &mut app, &client);
@@ -122,11 +112,11 @@ fn event_loop(
     let mut pending_resize: Option<(u16, u16, Instant)> = None;
 
     loop {
-        if let Some((width, height, resized_at)) = pending_resize {
-            if resized_at.elapsed() >= RESIZE_SETTLE {
-                preview_size = ui::preview_dimensions(Rect::new(0, 0, width, height));
-                pending_resize = None;
-            }
+        if let Some((width, height, resized_at)) = pending_resize
+            && resized_at.elapsed() >= RESIZE_SETTLE
+        {
+            preview_size = ui::preview_dimensions(Rect::new(0, 0, width, height));
+            pending_resize = None;
         }
         preview.refresh(app, client, preview_size);
         terminal.draw(|frame| ui::draw(frame, app))?;

@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use serde::Deserialize;
@@ -296,59 +296,48 @@ impl Observer {
         cleanup_sender: Option<SyncSender<Resources>>,
     ) -> Result<Self, StartError> {
         let mut child = client.observe_agent(target, columns, rows)?;
-        let Some(stdout) = child.stdout.take() else {
-            terminate(child, Vec::new());
-            return Err(StartError::MissingPipe("stdout"));
-        };
-        let Some(stderr) = child.stderr.take() else {
-            terminate(child, Vec::new());
-            return Err(StartError::MissingPipe("stderr"));
-        };
-
-        let shared = Arc::new(Mutex::new(StreamState::default()));
-        let stdout_shared = Arc::clone(&shared);
-        let stdout_reader = thread::Builder::new()
-            .name("agents-picker-preview".to_string())
-            .spawn(move || read_frames(stdout, &stdout_shared));
-        let stdout_reader = match stdout_reader {
-            Ok(handle) => handle,
-            Err(source) => {
-                terminate(child, Vec::new());
-                return Err(StartError::Thread(source));
-            }
-        };
-
-        let stderr_shared = Arc::clone(&shared);
-        let stderr_reader = thread::Builder::new()
-            .name("agents-picker-preview-stderr".to_string())
-            .spawn(move || read_stderr(stderr, &stderr_shared));
-        let stderr_reader = match stderr_reader {
-            Ok(handle) => handle,
-            Err(source) => {
-                terminate(child, vec![stdout_reader]);
-                return Err(StartError::Thread(source));
-            }
-        };
-
-        Ok(Self {
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let mut observer = Self {
             child: Some(child),
-            readers: vec![stdout_reader, stderr_reader],
-            shared,
-            reaper: cleanup_sender,
-        })
+            readers: Vec::new(),
+            shared: Arc::new(Mutex::new(StreamState::default())),
+            reaper: None,
+        };
+        let stdout = stdout.ok_or(StartError::MissingPipe("stdout"))?;
+        let stderr = stderr.ok_or(StartError::MissingPipe("stderr"))?;
+
+        let stdout_shared = Arc::clone(&observer.shared);
+        observer.readers.push(
+            thread::Builder::new()
+                .name("agents-picker-preview".to_string())
+                .spawn(move || read_frames(stdout, &stdout_shared))
+                .map_err(StartError::Thread)?,
+        );
+
+        let stderr_shared = Arc::clone(&observer.shared);
+        observer.readers.push(
+            thread::Builder::new()
+                .name("agents-picker-preview-stderr".to_string())
+                .spawn(move || read_stderr(stderr, &stderr_shared))
+                .map_err(StartError::Thread)?,
+        );
+
+        observer.reaper = cleanup_sender;
+        Ok(observer)
     }
 
     fn preview_after(&self, rendered_revision: u64) -> ConnectionUpdate {
         let Ok(state) = self.shared.lock() else {
             return ConnectionUpdate::Ended(Some("preview state lock was poisoned".to_string()));
         };
-        if state.revision > rendered_revision {
-            if let Some(parser) = &state.parser {
-                return ConnectionUpdate::Updated {
-                    revision: state.revision,
-                    text: terminal_text(parser.screen()),
-                };
-            }
+        if state.revision > rendered_revision
+            && let Some(parser) = &state.parser
+        {
+            return ConnectionUpdate::Updated {
+                revision: state.revision,
+                text: terminal_text(parser.screen()),
+            };
         }
         if state.is_ended() {
             ConnectionUpdate::Ended(state.diagnostic.clone())
@@ -396,11 +385,6 @@ struct Resources {
     readers: Vec<JoinHandle<()>>,
 }
 
-fn terminate(mut child: Child, readers: Vec<JoinHandle<()>>) {
-    let _ = child.kill();
-    finish_cleanup(Resources { child, readers });
-}
-
 fn finish_cleanup(mut resources: Resources) {
     let _ = resources.child.wait();
     for reader in resources.readers {
@@ -416,13 +400,14 @@ struct Reaper {
 impl Reaper {
     fn new() -> Self {
         let (sender, receiver) = mpsc::sync_channel(4);
-        match thread::Builder::new()
+        let started = thread::Builder::new()
             .name("agents-picker-preview-reaper".to_string())
             .spawn(move || {
                 while let Ok(resources) = receiver.recv() {
                     finish_cleanup(resources);
                 }
-            }) {
+            });
+        match started {
             Ok(thread) => Self {
                 sender: Some(sender),
                 thread: Some(thread),
@@ -755,10 +740,11 @@ mod tests {
             .map(|span| span.content.as_ref())
             .collect();
         assert!(preview.contains("preview unavailable"));
-        assert!(app
-            .preview_error
-            .as_deref()
-            .is_some_and(|error| error.contains("live preview unavailable")));
+        assert!(
+            app.preview_error
+                .as_deref()
+                .is_some_and(|error| error.contains("live preview unavailable"))
+        );
     }
 
     #[test]

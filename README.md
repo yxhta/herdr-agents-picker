@@ -125,9 +125,9 @@ herdr plugin pane open --plugin yxhta.agents-picker --entrypoint picker
 ## Development
 
 ```sh
-cargo test
-cargo clippy --all-targets
-cargo fmt
+cargo test --all-targets --all-features --locked
+cargo clippy --all-targets --all-features --locked -- -D warnings
+cargo fmt --all -- --check
 ```
 
 The `[[build]]` command in the manifest only runs on `herdr plugin install`

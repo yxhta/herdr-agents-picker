@@ -7,6 +7,13 @@ use ratatui::widgets::TableState;
 use crate::fuzzy;
 use crate::herdr::{Agent, AgentPanelSort, WorkspaceIndex};
 
+struct AgentDisplay {
+    location: String,
+    label: String,
+    cwd: String,
+    search_text: String,
+}
+
 struct ObservedStatus {
     status: String,
     change_seq: Option<u64>,
@@ -41,15 +48,7 @@ pub struct App {
     next_status_change_seq: u64,
     list_generation: u64,
     workspaces: WorkspaceIndex,
-    /// Per-agent display strings, parallel to `agents`. Cached so the
-    /// per-keystroke filter pass and the per-frame draw stay allocation-free;
-    /// rebuilt only when the agent list or workspace index changes.
-    locations: Vec<String>,
-    labels: Vec<String>,
-    cwds: Vec<String>,
-    /// Fuzzy-match haystack per agent, parallel to `agents`; same cache
-    /// lifetime as `locations`.
-    search_texts: Vec<String>,
+    displays: Vec<AgentDisplay>,
     /// Matched-char indices per filtered row, parallel to `filtered`; empty
     /// when the filter is empty. Computed per filter change so the draw path
     /// never re-runs the fuzzy walk.
@@ -76,10 +75,7 @@ impl App {
             next_status_change_seq: 0,
             list_generation: 0,
             workspaces: WorkspaceIndex::default(),
-            locations: Vec::new(),
-            labels: Vec::new(),
-            cwds: Vec::new(),
-            search_texts: Vec::new(),
+            displays: Vec::new(),
             highlights: Vec::new(),
             opened_at: Instant::now(),
         }
@@ -93,17 +89,23 @@ impl App {
     /// Cached workspace/tab label for `agents[index]`, matching the built-in
     /// sidebar's agents panel.
     pub fn location(&self, index: usize) -> &str {
-        self.locations.get(index).map_or("-", String::as_str)
+        self.displays
+            .get(index)
+            .map_or("-", |display| display.location.as_str())
     }
 
     /// Cached `Agent::label` for `agents[index]`.
     pub fn label(&self, index: usize) -> &str {
-        self.labels.get(index).map_or("-", String::as_str)
+        self.displays
+            .get(index)
+            .map_or("-", |display| display.label.as_str())
     }
 
     /// Cached `Agent::short_cwd` for `agents[index]`.
     pub fn cwd(&self, index: usize) -> &str {
-        self.cwds.get(index).map_or("-", String::as_str)
+        self.displays
+            .get(index)
+            .map_or("-", |display| display.cwd.as_str())
     }
 
     /// Cached matched-char indices into the search text for filtered row
@@ -211,38 +213,32 @@ impl App {
     }
 
     fn rebuild_caches(&mut self) {
-        self.locations = self
+        self.displays = self
             .agents
             .iter()
-            .map(|agent| self.workspaces.location_for(agent))
-            .collect();
-        self.labels = self.agents.iter().map(Agent::label).collect();
-        self.cwds = self
-            .agents
-            .iter()
-            .map(|agent| agent.short_cwd(self.home.as_deref()))
-            .collect();
-        // The haystack concatenates the same strings as the visible columns;
-        // `highlight` offsets in ui.rs assume this exact order.
-        self.search_texts = (0..self.agents.len())
-            .map(|i| {
-                format!(
-                    "{} {} {} {}",
-                    self.agents[i].kind(),
-                    self.labels[i],
-                    self.locations[i],
-                    self.cwds[i]
-                )
+            .map(|agent| {
+                let location = self.workspaces.location_for(agent);
+                let label = agent.label();
+                let cwd = agent.short_cwd(self.home.as_deref());
+                let search_text = format!("{} {label} {location} {cwd}", agent.kind());
+                AgentDisplay {
+                    location,
+                    label,
+                    cwd,
+                    search_text,
+                }
             })
             .collect();
     }
 
     pub fn apply_filter(&mut self) {
         let mut scored: Vec<(i64, usize)> = self
-            .search_texts
+            .displays
             .iter()
             .enumerate()
-            .filter_map(|(i, text)| fuzzy::score(&self.filter, text).map(|score| (score, i)))
+            .filter_map(|(i, display)| {
+                fuzzy::score(&self.filter, &display.search_text).map(|score| (score, i))
+            })
             .collect();
         if !self.filter.is_empty() {
             scored.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
@@ -253,7 +249,10 @@ impl App {
         } else {
             self.filtered
                 .iter()
-                .map(|&i| fuzzy::positions(&self.filter, &self.search_texts[i]).unwrap_or_default())
+                .map(|&i| {
+                    fuzzy::positions(&self.filter, &self.displays[i].search_text)
+                        .unwrap_or_default()
+                })
                 .collect()
         };
 
@@ -535,7 +534,10 @@ mod tests {
     fn cached_search_text_tracks_agent_and_location() {
         let app = sample_app();
         assert_eq!(app.location(0), "-");
-        assert_eq!(app.search_texts[0], "claude dotfiles work - /w/dotfiles");
+        assert_eq!(
+            app.displays[0].search_text,
+            "claude dotfiles work - /w/dotfiles"
+        );
     }
 
     #[test]
@@ -544,11 +546,27 @@ mod tests {
         for c in "dealon".chars() {
             app.push_char(c);
         }
-        // Cached rows mirror the greedy fuzzy walk over each row's haystack.
-        let expected = fuzzy::positions(&app.filter, &app.search_texts[app.filtered[0]]).unwrap();
-        assert_eq!(app.highlights(0), expected);
+        assert_eq!(app.highlights(0), [2, 3, 8, 9, 10, 11]);
 
         app.clear_filter();
         assert!(app.highlights(0).is_empty());
+    }
+
+    #[test]
+    fn unicode_highlights_follow_original_character_positions() {
+        let mut app = App::new(Some("/home/test".to_string()), None);
+        app.set_agents(
+            parse_agent_list(
+                r#"{"result":{"agents":[{"agent":"codex","name":"İ猫","cwd":"/home/test/日本","pane_id":"w1:p1"}]}}"#,
+            )
+            .unwrap(),
+        );
+        for c in "i\u{307}猫日".chars() {
+            app.push_char(c);
+        }
+        assert_eq!(
+            (app.label(0), app.cwd(0), app.highlights(0)),
+            ("İ猫", "~/日本", [6, 7, 13].as_slice())
+        );
     }
 }

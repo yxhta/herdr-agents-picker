@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table};
-use ratatui::Frame;
 
 use crate::app::{App, Mode};
 
@@ -295,9 +295,9 @@ fn status_style(status: &str) -> Style {
 mod tests {
     use super::*;
     use crate::herdr::parse_agent_list;
+    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::text::Text;
-    use ratatui::Terminal;
 
     fn sample_app() -> App {
         let agents = parse_agent_list(
